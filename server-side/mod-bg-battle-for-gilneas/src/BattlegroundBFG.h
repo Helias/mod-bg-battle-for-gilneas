@@ -8,6 +8,7 @@
 
 #include "Battleground.h"
 #include "Object.h"
+#include "EventMap.h"
 
 enum BG_BFG_Events
 {
@@ -259,12 +260,37 @@ struct GILNEAS_BG_BannerTimer
     uint8  teamIndex;
 };
 
-struct BattlegroundBFGScore : public BattlegroundScore
+struct BattlegroundBFGScore final : public BattlegroundScore
 {
-    BattlegroundBFGScore(Player* player) : BattlegroundScore(player), BasesAssaulted(0), BasesDefended(0) {}
-    ~BattlegroundBFGScore() {}
-    uint32 BasesAssaulted;
-    uint32 BasesDefended;
+    friend class BattlegroundBFG;
+
+protected:
+    BattlegroundBFGScore(ObjectGuid playerGuid) : BattlegroundScore(playerGuid) {}
+
+    void UpdateScore(uint32 type, uint32 value) override
+    {
+        switch (type)
+        {
+        case SCORE_BASES_ASSAULTED:
+            BasesAssaulted += value;
+            break;
+        case SCORE_BASES_DEFENDED:
+            BasesDefended += value;
+            break;
+        default:
+            BattlegroundScore::UpdateScore(type, value);
+            break;
+        }
+    }
+
+    void BuildObjectivesBlock(WorldPacket& data) final;
+
+
+    uint32 GetAttr1() const override { return BasesAssaulted; }
+    uint32 GetAttr2() const override { return BasesDefended; }
+
+    uint32 BasesAssaulted = 0;
+    uint32 BasesDefended = 0;
 };
 
 class BattlegroundBFG : public Battleground
@@ -273,26 +299,26 @@ public:
     BattlegroundBFG();
     ~BattlegroundBFG();
 
-    void AddPlayer(Player* player);
-    void StartingEventCloseDoors();
-    void StartingEventOpenDoors();
-    void RemovePlayer(Player* player);
-    void HandleAreaTrigger(Player* player, uint32 trigger);
-    bool SetupBattleground();
-    void Init();
-    void EndBattleground(TeamId winnerTeamId);
-    GraveyardStruct const* GetClosestGraveyard(Player* player);
+    void AddPlayer(Player* player) override;
+    void StartingEventCloseDoors() override;
+    void StartingEventOpenDoors() override;
+    void RemovePlayer(Player* player) override;
+    void HandleAreaTrigger(Player* player, uint32 trigger) override;
+    bool SetupBattleground() override;
+    void Init() override;
+    void EndBattleground(TeamId winnerTeamId) override;
+    GraveyardStruct const* GetClosestGraveyard(Player* player) override;
 
-    void UpdatePlayerScore(Player* player, uint32 type, uint32 value, bool doAddHonor = true);
-    void FillInitialWorldStates(WorldPacket& data);
-    void EventPlayerClickedOnFlag(Player* source, GameObject* gameObject);
+    bool UpdatePlayerScore(Player* player, uint32 type, uint32 value, bool doAddHonor = true) override;
+    void FillInitialWorldStates(WorldPacket& data)  override;
+    void EventPlayerClickedOnFlag(Player* source, GameObject* gameObject) override;
 
-    bool AllNodesConrolledByTeam(TeamId teamId) const;
+    bool AllNodesConrolledByTeam(TeamId teamId) const override;
     bool IsTeamScores500Disadvantage(TeamId teamId) const { return _teamScores500Disadvantage[teamId]; }
-    
-    TeamId GetPrematureWinner();
+
+    TeamId GetPrematureWinner() override;
 private:
-    void PostUpdateImpl(uint32 diff);
+    void PostUpdateImpl(uint32 diff) override;
 
     void DeleteBanner(uint8 node);
     void CreateBanner(uint8 node, bool delay);
@@ -319,8 +345,8 @@ private:
     EventMap _bgEvents;
     uint32 _honorTics;
     uint32 _reputationTics;
-    uint8 _controlledPoints[BG_TEAMS_COUNT];
-    bool _teamScores500Disadvantage[BG_TEAMS_COUNT];
+    uint8 _controlledPoints[PVP_TEAMS_COUNT] {};
+    bool _teamScores500Disadvantage[PVP_TEAMS_COUNT] {};
 
 //     void AddPlayer(Player* player);
 //     void StartingEventCloseDoors();

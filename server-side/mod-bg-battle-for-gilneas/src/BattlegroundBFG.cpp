@@ -27,6 +27,14 @@
 BattlegroundTypeId BATTLEGROUND_BFG = BattlegroundTypeId(120); // value from BattlemasterList.dbc
 BattlegroundQueueTypeId BATTLEGROUND_QUEUE_BFG = BattlegroundQueueTypeId(13);
 
+
+void BattlegroundBFGScore::BuildObjectivesBlock(WorldPacket& data)
+{
+    data << uint32(2);
+    data << uint32(BasesAssaulted);
+    data << uint32(BasesDefended);
+}
+
 BattlegroundBFG::BattlegroundBFG()
 {
     m_BuffChange = true;
@@ -76,7 +84,7 @@ void BattlegroundBFG::PostUpdateImpl(uint32 diff)
                     NodeOccupied(node);
                     SendNodeUpdate(node);
 
-                    SendMessage2ToAll(LANG_BG_BFG_NODE_TAKEN, teamId == TEAM_ALLIANCE ? CHAT_MSG_BG_SYSTEM_ALLIANCE : CHAT_MSG_BG_SYSTEM_HORDE, NULL, teamId == TEAM_ALLIANCE ? LANG_BG_BFG_ALLY : LANG_BG_BFG_HORDE, LANG_BG_BFG_NODE_LIGHTHOUSE + node);
+                    // SendBroadcastText(LANG_BG_BFG_NODE_TAKEN, teamId == TEAM_ALLIANCE ? CHAT_MSG_BG_SYSTEM_ALLIANCE : CHAT_MSG_BG_SYSTEM_HORDE, NULL, teamId == TEAM_ALLIANCE ? LANG_BG_BFG_ALLY : LANG_BG_BFG_HORDE, LANG_BG_BFG_NODE_LIGHTHOUSE + node);
                     PlaySoundToAll(teamId == TEAM_ALLIANCE ? GILNEAS_BG_SOUND_NODE_CAPTURED_ALLIANCE : GILNEAS_BG_SOUND_NODE_CAPTURED_HORDE);
                     break;
                 }
@@ -105,7 +113,7 @@ void BattlegroundBFG::PostUpdateImpl(uint32 diff)
 
                     if (information < uint8(m_TeamScores[teamId] / GILNEAS_BG_WARNING_NEAR_VICTORY_SCORE))
                     {
-                        SendMessageToAll(teamId == TEAM_ALLIANCE ? LANG_BG_BFG_A_NEAR_VICTORY : LANG_BG_BFG_H_NEAR_VICTORY, CHAT_MSG_BG_SYSTEM_NEUTRAL);
+                        SendBroadcastText(teamId == TEAM_ALLIANCE ? LANG_BG_BFG_A_NEAR_VICTORY : LANG_BG_BFG_H_NEAR_VICTORY, CHAT_MSG_BG_SYSTEM_NEUTRAL);
                         PlaySoundToAll(GILNEAS_BG_SOUND_NEAR_VICTORY);
                     }
 
@@ -125,7 +133,7 @@ void BattlegroundBFG::PostUpdateImpl(uint32 diff)
 void BattlegroundBFG::StartingEventCloseDoors()
 {
     // despawn banners, auras and buffs
-    for (uint32 obj = GILNEAS_BG_OBJECT_BANNER_NEUTRAL; obj < GILNEAS_BG_DYNAMIC_NODES_COUNT * GILNEAS_BG_OBJECT_PER_NODE; ++obj)
+    for (uint32 obj = GILNEAS_BG_OBJECT_BANNER_NEUTRAL; obj < static_cast<uint8>(GILNEAS_BG_DYNAMIC_NODES_COUNT) * GILNEAS_BG_OBJECT_PER_NODE; ++obj)
         SpawnBGObject(obj, RESPAWN_ONE_DAY);
     for (uint32 i = 0; i < GILNEAS_BG_DYNAMIC_NODES_COUNT * 3; ++i)
         SpawnBGObject(GILNEAS_BG_OBJECT_SPEEDBUFF_LIGHTHOUSE + i, RESPAWN_ONE_DAY);
@@ -170,7 +178,7 @@ void BattlegroundBFG::StartingEventOpenDoors()
 void BattlegroundBFG::AddPlayer(Player* player)
 {
     Battleground::AddPlayer(player);
-    PlayerScores[player->GetGUID()] = new BattlegroundBFGScore(player);
+    PlayerScores.emplace(player->GetGUID().GetCounter(), new BattlegroundBFGScore(player->GetGUID()));
 }
 
 void BattlegroundBFG::RemovePlayer(Player* player) {
@@ -272,7 +280,7 @@ void BattlegroundBFG::NodeOccupied(uint8 node)
 
     if (trigger)
     {
-        trigger->setFaction(_capturePointInfo[node]._ownerTeamId == TEAM_ALLIANCE ? 84 : 83);
+        trigger->SetFaction(_capturePointInfo[node]._ownerTeamId == TEAM_ALLIANCE ? FACTION_ALLIANCE_GENERIC : FACTION_HORDE_GENERIC);
         trigger->CastSpell(trigger, SPELL_HONORABLE_DEFENDER_25Y, false);
     }
 }
@@ -299,7 +307,7 @@ void BattlegroundBFG::EventPlayerClickedOnFlag(Player* player, GameObject* gameO
         if (player->GetDistance2d(GILNEAS_BG_NodePositions[node][0], GILNEAS_BG_NodePositions[node][1]) < 10.0f)
             break;
 
-    if (node == GILNEAS_BG_DYNAMIC_NODES_COUNT || _capturePointInfo[node]._ownerTeamId == player->GetTeamId() || 
+    if (node == GILNEAS_BG_DYNAMIC_NODES_COUNT || _capturePointInfo[node]._ownerTeamId == player->GetTeamId() ||
         (_capturePointInfo[node]._state == GILNEAS_BG_NODE_STATUS_ALLY_CONTESTED && player->GetTeamId() == TEAM_ALLIANCE) ||
         (_capturePointInfo[node]._state == GILNEAS_BG_NODE_STATUS_HORDE_CONTESTED && player->GetTeamId() == TEAM_HORDE))
         return;
@@ -307,39 +315,39 @@ void BattlegroundBFG::EventPlayerClickedOnFlag(Player* player, GameObject* gameO
     player->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_ENTER_PVP_COMBAT);
 
     uint32 sound = 0;
-    uint32 message = 0;
-    uint32 message2 = 0;
+    // uint32 message = 0;
+    // uint32 message2 = 0;
     DeleteBanner(node);
     CreateBanner(node, true);
 
     if (_capturePointInfo[node]._state == GILNEAS_BG_NODE_TYPE_NEUTRAL)
     {
         UpdatePlayerScore(player, SCORE_BASES_ASSAULTED, 1);
-        _capturePointInfo[node]._state = GILNEAS_BG_NODE_STATUS_ALLY_CONTESTED + player->GetTeamId();
+        _capturePointInfo[node]._state = static_cast<uint8>(GILNEAS_BG_NODE_STATUS_ALLY_CONTESTED) + player->GetTeamId();
         _capturePointInfo[node]._ownerTeamId = TEAM_NEUTRAL;
         _bgEvents.RescheduleEvent(BG_BFG_EVENT_CAPTURE_LIGHTHOUSE + node, GILNEAS_BG_FLAG_CAPTURING_TIME);
         sound = GILNEAS_BG_SOUND_NODE_CLAIMED;
-        message = LANG_BG_BFG_NODE_CLAIMED;
-        message2 = player->GetTeamId() == TEAM_ALLIANCE ? LANG_BG_BFG_ALLY : LANG_BG_BFG_HORDE;
+        // message = LANG_BG_BFG_NODE_CLAIMED;
+        // message2 = player->GetTeamId() == TEAM_ALLIANCE ? LANG_BG_BFG_ALLY : LANG_BG_BFG_HORDE;
     }
     else if (_capturePointInfo[node]._state == GILNEAS_BG_NODE_STATUS_ALLY_CONTESTED || _capturePointInfo[node]._state == GILNEAS_BG_NODE_STATUS_HORDE_CONTESTED)
     {
         if (!_capturePointInfo[node]._captured)
         {
             UpdatePlayerScore(player, SCORE_BASES_ASSAULTED, 1);
-            _capturePointInfo[node]._state = GILNEAS_BG_NODE_STATUS_ALLY_CONTESTED + player->GetTeamId();
+            _capturePointInfo[node]._state = static_cast<uint8>(GILNEAS_BG_NODE_STATUS_ALLY_CONTESTED) + player->GetTeamId();
             _capturePointInfo[node]._ownerTeamId = TEAM_NEUTRAL;
             _bgEvents.RescheduleEvent(BG_BFG_EVENT_CAPTURE_LIGHTHOUSE + node, GILNEAS_BG_FLAG_CAPTURING_TIME);
-            message = LANG_BG_BFG_NODE_ASSAULTED;
+            // message = LANG_BG_BFG_NODE_ASSAULTED;
         }
         else
         {
             UpdatePlayerScore(player, SCORE_BASES_DEFENDED, 1);
-            _capturePointInfo[node]._state = GILNEAS_BG_NODE_STATUS_ALLY_OCCUPIED + player->GetTeamId();
+            _capturePointInfo[node]._state = static_cast<uint8>(GILNEAS_BG_NODE_STATUS_ALLY_OCCUPIED) + player->GetTeamId();
             _capturePointInfo[node]._ownerTeamId = player->GetTeamId();
             _bgEvents.CancelEvent(BG_BFG_EVENT_CAPTURE_LIGHTHOUSE + node);
             NodeOccupied(node); // after setting team owner
-            message = LANG_BG_BFG_NODE_DEFENDED;
+            // message = LANG_BG_BFG_NODE_DEFENDED;
         }
         sound = player->GetTeamId() == TEAM_ALLIANCE ? GILNEAS_BG_SOUND_NODE_ASSAULTED_ALLIANCE : GILNEAS_BG_SOUND_NODE_ASSAULTED_HORDE;
     }
@@ -348,17 +356,17 @@ void BattlegroundBFG::EventPlayerClickedOnFlag(Player* player, GameObject* gameO
         UpdatePlayerScore(player, SCORE_BASES_ASSAULTED, 1);
         NodeDeoccupied(node); // before setting team owner to neutral
 
-        _capturePointInfo[node]._state = GILNEAS_BG_NODE_STATUS_ALLY_CONTESTED + player->GetTeamId();
+        _capturePointInfo[node]._state = static_cast<uint8>(GILNEAS_BG_NODE_STATUS_ALLY_CONTESTED) + player->GetTeamId();
 
         ApplyPhaseMask();
         _bgEvents.RescheduleEvent(BG_BFG_EVENT_CAPTURE_LIGHTHOUSE + node, GILNEAS_BG_FLAG_CAPTURING_TIME);
-        message = LANG_BG_BFG_NODE_ASSAULTED;
+        // message = LANG_BG_BFG_NODE_ASSAULTED;
         sound = player->GetTeamId() == TEAM_ALLIANCE ? GILNEAS_BG_SOUND_NODE_ASSAULTED_ALLIANCE : GILNEAS_BG_SOUND_NODE_ASSAULTED_HORDE;
     }
 
     SendNodeUpdate(node);
     PlaySoundToAll(sound);
-    SendMessage2ToAll(message, player->GetTeamId() == TEAM_ALLIANCE ? CHAT_MSG_BG_SYSTEM_ALLIANCE : CHAT_MSG_BG_SYSTEM_HORDE, player, LANG_BG_BFG_NODE_LIGHTHOUSE + node, message2);
+    // SendBroadcastText(message, player->GetTeamId() == TEAM_ALLIANCE ? CHAT_MSG_BG_SYSTEM_ALLIANCE : CHAT_MSG_BG_SYSTEM_HORDE, player, LANG_BG_BFG_NODE_LIGHTHOUSE + node, message2);
 }
 
 TeamId BattlegroundBFG::GetPrematureWinner()
@@ -431,7 +439,7 @@ void BattlegroundBFG::EndBattleground(TeamId winnerTeamId)
 
 GraveyardStruct const* BattlegroundBFG::GetClosestGraveyard(Player* player)
 {
-    GraveyardStruct const* entry = sGraveyard->GetGraveyard(GILNEAS_BG_GraveyardIds[GILNEAS_BG_SPIRIT_ALLIANCE + player->GetTeamId()]);
+    GraveyardStruct const* entry = sGraveyard->GetGraveyard(GILNEAS_BG_GraveyardIds[static_cast<uint8>(GILNEAS_BG_SPIRIT_ALLIANCE) + player->GetTeamId()]);
     GraveyardStruct const* nearestEntry = entry;
 
     float pX = player->GetPositionX();
@@ -454,26 +462,24 @@ GraveyardStruct const* BattlegroundBFG::GetClosestGraveyard(Player* player)
     return nearestEntry;
 }
 
-void BattlegroundBFG::UpdatePlayerScore(Player* player, uint32 type, uint32 value, bool doAddHonor)
+bool BattlegroundBFG::UpdatePlayerScore(Player* player, uint32 type, uint32 value, bool doAddHonor)
 {
-    BattlegroundScoreMap::iterator itr = PlayerScores.find(player->GetGUID());
-    if (itr == PlayerScores.end())
-        return;
+    if (!Battleground::UpdatePlayerScore(player, type, value, doAddHonor))
+        return false;
 
     switch (type)
     {
         case SCORE_BASES_ASSAULTED:
-            ((BattlegroundBFGScore*)itr->second)->BasesAssaulted += value;
             player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_BG_OBJECTIVE_CAPTURE, GILNEAS_BG_OBJECTIVE_ASSAULT_BASE);
             break;
         case SCORE_BASES_DEFENDED:
-            ((BattlegroundBFGScore*)itr->second)->BasesDefended += value;
             player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_BG_OBJECTIVE_CAPTURE, GILNEAS_BG_OBJECTIVE_DEFEND_BASE);
             break;
         default:
-            Battleground::UpdatePlayerScore(player, type, value, doAddHonor);
             break;
     }
+
+    return true;
 }
 
 bool BattlegroundBFG::AllNodesConrolledByTeam(TeamId teamId) const
@@ -525,22 +531,21 @@ void AddBattleForGilneasScripts() {
 
 	BattlegroundMgr::bgTypeToTemplate[BATTLEGROUND_BFG] = [](Battleground *bg_t) -> Battleground * { return new BattlegroundBFG(*(BattlegroundBFG *) bg_t); };
 
-	BattlegroundMgr::getBgFromTypeID[BATTLEGROUND_BFG] = [](WorldPacket* data, Battleground::BattlegroundScoreMap::const_iterator itr2, Battleground* /* bg */) {
-    *data << uint32(0x00000002);            // count of next fields
-    *data << uint32(((BattlegroundBFGScore*)itr2->second)->BasesAssaulted);      // bases asssaulted
-    *data << uint32(((BattlegroundBFGScore*)itr2->second)->BasesDefended);       // bases defended
-	};
+	// BattlegroundMgr::getBgFromTypeID[BATTLEGROUND_BFG] = [](WorldPacket* data, Battleground::BattlegroundScoreMap::const_iterator itr2, Battleground* /* bg */) {
+    //     *data << uint32(0x00000002);            // count of next fields
+    //     *data << uint32(((BattlegroundBFGScore*)itr2->second)->BasesAssaulted);      // bases asssaulted
+    //     *data << uint32(((BattlegroundBFGScore*)itr2->second)->BasesDefended);       // bases defended
+	// };
 
-	BattlegroundMgr::getBgFromMap[761] = [](WorldPacket* data, Battleground::BattlegroundScoreMap::const_iterator itr2) {
-    *data << uint32(0x00000002);            // count of next fields
-    *data << uint32(((BattlegroundBFGScore*)itr2->second)->BasesAssaulted);      // bases asssaulted
-    *data << uint32(((BattlegroundBFGScore*)itr2->second)->BasesDefended);       // bases defended
-	};
+	// BattlegroundMgr::getBgFromMap[761] = [](WorldPacket* data, Battleground::BattlegroundScoreMap::const_iterator itr2) {
+    //     *data << uint32(0x00000002);            // count of next fields
+    //     *data << uint32(((BattlegroundBFGScore*)itr2->second)->BasesAssaulted);      // bases asssaulted
+    //     *data << uint32(((BattlegroundBFGScore*)itr2->second)->BasesDefended);       // bases defended
+	// };
 
     Player::bgZoneIdToFillWorldStates[5449] = [](Battleground* bg, WorldPacket& data) {
         if (bg && bg->GetBgTypeID(true) == BATTLEGROUND_BFG) {
           bg->FillInitialWorldStates(data);
         }
     };
-
 }
