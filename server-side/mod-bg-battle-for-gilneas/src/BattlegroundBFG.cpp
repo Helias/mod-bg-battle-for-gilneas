@@ -521,7 +521,7 @@ class BattleForGilneasWorld : public WorldScript
     	BattleForGilneasWorld() : WorldScript("BattleForGilneasWorld") { }
 };
 
-void AddBattleForGilneasScripts() {
+void Addmod_bg_battle_for_gilneasScripts() {
 	new BattleForGilneasWorld();
 
 	// Add Battle for Gilneas to battleground list
